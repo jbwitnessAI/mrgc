@@ -1,0 +1,142 @@
+# Global Accelerator Configuration
+
+accelerator:
+  name: mrgc-global-accelerator
+  enabled: true
+  ip_address_type: IPV4
+
+# Listeners
+listeners:
+  https:
+    port: 443
+    protocol: TCP
+    client_affinity: NONE  # Better load balancing without sticky sessions
+
+  http:
+    enabled: true
+    port: 8080
+    protocol: TCP
+    client_affinity: NONE
+
+# Endpoint Groups (One per region)
+endpoint_groups:
+  us-east-1:
+    enabled: true
+    traffic_dial_percentage: 100  # Normal: 100%, Failover: 0%
+    weight: 128                   # Equal distribution
+
+  us-east-2:
+    enabled: true
+    traffic_dial_percentage: 100
+    weight: 128
+
+  us-west-2:
+    enabled: true
+    traffic_dial_percentage: 100
+    weight: 128
+
+# Health Checks
+health_check:
+  interval_seconds: 30
+  protocol: TCP  # For port 443, or HTTP for port 8080
+  port: null     # Use traffic port
+  path: /health  # For HTTP health checks
+  threshold_count: 3  # 3 consecutive failures = unhealthy
+
+# Flow Logs
+flow_logs:
+  enabled: true
+  s3_bucket: mrgc-global-accelerator-logs
+  s3_prefix: flow-logs/
+  retention_days: 90
+
+# Failover Integration
+failover:
+  # Traffic dial percentages for different failover states
+  normal:
+    us-east-1: 100
+    us-east-2: 100
+    us-west-2: 100
+
+  degraded:
+    # When a region is degraded, reduce traffic by 30%
+    degraded_region: 70
+    healthy_regions: 100
+
+  failover_active:
+    # When a region fails, set traffic dial to 0%
+    failed_region: 0
+    target_regions: 100
+
+  recovering:
+    # When a region is recovering, gradually increase traffic
+    recovering_region: 50
+    other_regions: 100
+
+# Tenant Configuration
+tenant_configuration:
+  # Static IPs that tenants should configure
+  # These are the 2 anycast IPs provided by Global Accelerator
+  # Example: After deployment, you'll get IPs like:
+  # - 75.2.60.100
+  # - 75.2.61.200
+
+  connection_string_https: "https://{STATIC_IP_1}:443/inference"
+  connection_string_http: "http://{STATIC_IP_1}:8080/health"
+
+  # Tenant should configure both IPs for redundancy
+  primary_ip: "{STATIC_IP_1}"
+  secondary_ip: "{STATIC_IP_2}"
+
+  # DNS (optional - for easier tenant configuration)
+  dns_name: "{ACCELERATOR_DNS_NAME}"  # e.g., a1234567890abcdef.awsglobalaccelerator.com
+
+# Monitoring
+monitoring:
+  cloudwatch_metrics:
+    - NewFlowCount         # Number of new flows per second
+    - ProcessedBytesIn     # Bytes received from clients
+    - ProcessedBytesOut    # Bytes sent to clients
+    - UnhealthyEndpointCount  # Number of unhealthy endpoints
+
+  alarms:
+    unhealthy_endpoints:
+      enabled: true
+      threshold: 0  # Alert if ANY endpoint is unhealthy
+      evaluation_periods: 2
+      period_seconds: 60
+      severity: critical
+      channels: [pagerduty, slack]
+
+    high_new_flows:
+      enabled: true
+      threshold: 100000
+      evaluation_periods: 2
+      period_seconds: 300
+      severity: warning
+      channels: [slack]
+
+# Cost Estimate
+cost:
+  hourly_rate: 0.025  # $0.025/hour
+  monthly_estimate: 18  # ~$18/month
+  data_transfer_per_gb: 0.015  # $0.015/GB from edge to endpoint
+  estimated_monthly_total: 100  # ~$100/month with traffic
+
+# Security
+security:
+  # Global Accelerator uses AWS Shield Standard (DDoS protection)
+  ddos_protection: standard  # Upgrade to Advanced for $3,000/month
+
+  # IP allowlist (optional - implemented at NLB security group level)
+  ip_allowlist_enabled: false
+  allowed_cidrs: []
+
+# Best Practices
+best_practices:
+  - "Use both static IPs for redundancy"
+  - "Monitor UnhealthyEndpointCount metric closely"
+  - "Test failover monthly using traffic dial adjustments"
+  - "Keep traffic dials at 100% during normal operations"
+  - "Use flow logs for security auditing and troubleshooting"
+  - "Consider AWS Shield Advanced for critical workloads"
