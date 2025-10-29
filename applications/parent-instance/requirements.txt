@@ -1,0 +1,20 @@
+# Python dependencies for Parent Instance Application
+
+# Web framework for HTTP endpoints
+flask==3.0.0
+
+# AWS SDK (for IAM role credentials, not direct AWS calls)
+boto3==1.34.22
+
+# Production ML frameworks (install these on GPU instance):
+# torch==2.1.2+cu121
+# transformers==4.36.2
+# vllm==0.2.7
+# accelerate==0.25.0
+
+# GPU monitoring
+# nvidia-ml-py==12.535.133
+
+# Optional: Performance and async
+# gunicorn==21.2.0
+# gevent==23.9.1
