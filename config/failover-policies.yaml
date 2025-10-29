@@ -1,0 +1,145 @@
+# Failover Policies Configuration
+
+# Health Check Settings
+health_check:
+  interval_seconds: 30
+  timeout_seconds: 10
+  failure_threshold: 3  # Consecutive failures before marking unhealthy
+  heartbeat_timeout_seconds: 90  # Instance heartbeat timeout
+
+# Failover Thresholds
+failover:
+  degraded_threshold: 0.5   # 50% healthy instances = degraded
+  unhealthy_threshold: 0.3  # 30% healthy instances = failover
+  recovery_threshold: 0.8   # 80% healthy instances to recover
+
+  # Minimum time in failover before attempting recovery (seconds)
+  min_failover_duration: 300  # 5 minutes
+
+  # Maximum time to wait for recovery before alerting (seconds)
+  max_recovery_time: 1800  # 30 minutes
+
+# Cross-Region Latency Matrix (milliseconds)
+# Used for prioritizing failover targets
+region_latency:
+  us-east-1:
+    us-east-2: 15
+    us-west-2: 70
+  us-east-2:
+    us-east-1: 15
+    us-west-2: 55
+  us-west-2:
+    us-east-1: 70
+    us-east-2: 55
+
+# Failover Routing Weights
+# Weight determines traffic percentage to each region
+routing_weights:
+  normal:
+    local_region: 100
+    other_regions: 10
+
+  degraded:
+    local_region: 70
+    other_regions: 30
+
+  failover_active:
+    local_region: 5       # Minimal traffic to failed region
+    primary_target: 80    # Primary failover target (lowest latency)
+    secondary_target: 15  # Secondary target
+
+  recovering:
+    local_region: 50
+    other_regions: 25
+
+# Auto-Scaling During Failover
+failover_scaling:
+  enabled: true
+  scale_up_multiplier: 1.5  # Scale target regions by 1.5x to handle additional load
+  scale_up_delay_seconds: 60  # Wait 60s before scaling up (avoid false positives)
+
+# Alerts
+alerts:
+  # Alert when region enters degraded state
+  degraded_alert:
+    enabled: true
+    channels: ["pagerduty", "slack"]
+    severity: "warning"
+
+  # Alert when failover is initiated
+  failover_alert:
+    enabled: true
+    channels: ["pagerduty", "slack", "email"]
+    severity: "critical"
+
+  # Alert if recovery takes too long
+  recovery_timeout_alert:
+    enabled: true
+    channels: ["pagerduty", "email"]
+    severity: "critical"
+    timeout_seconds: 1800  # 30 minutes
+
+# Instance Health Scoring
+instance_health:
+  # Response time thresholds (milliseconds)
+  response_time:
+    healthy_max: 500
+    degraded_max: 2000
+    unhealthy_min: 2000
+
+  # Queue depth thresholds
+  queue_depth:
+    healthy_max: 5
+    degraded_max: 8
+    unhealthy_min: 8
+
+  # HTTP status codes
+  status_codes:
+    healthy: [200]
+    degraded: [200, 429]  # 429 = Too Many Requests
+    unhealthy: [500, 502, 503, 504]
+
+# Disaster Recovery Scenarios
+dr_scenarios:
+  # Scenario 1: Single region failure
+  single_region_failure:
+    description: "One region completely fails"
+    expected_behavior:
+      - "Automatic failover within 60 seconds"
+      - "Traffic redirected to nearest healthy region"
+      - "Auto-scale target regions by 50%"
+      - "Maintain 99.9% availability"
+    recovery_time_objective: 300  # 5 minutes
+
+  # Scenario 2: Partial region degradation
+  partial_degradation:
+    description: "30-50% of instances in region fail"
+    expected_behavior:
+      - "Mark region as degraded"
+      - "Reduce traffic to affected region"
+      - "Increase traffic to healthy regions"
+      - "Auto-scale within region to replace failed instances"
+    recovery_time_objective: 600  # 10 minutes
+
+  # Scenario 3: Multiple region failures
+  multi_region_failure:
+    description: "Two regions fail simultaneously (unlikely)"
+    expected_behavior:
+      - "Route all traffic to remaining region"
+      - "Aggressive auto-scaling in healthy region"
+      - "Critical alerts to on-call team"
+      - "Possible service degradation"
+    recovery_time_objective: 900  # 15 minutes
+
+# Testing
+testing:
+  # Chaos engineering - simulate failures
+  chaos_testing:
+    enabled: false  # Disable in production
+    failure_rate: 0.01  # 1% of health checks fail randomly
+
+  # Failover drill schedule
+  drill_schedule:
+    enabled: true
+    frequency_days: 30  # Monthly drills
+    notification_hours: 24  # Notify team 24 hours before drill
