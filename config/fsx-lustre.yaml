@@ -1,0 +1,276 @@
+# FSx Lustre Configuration for Multi-Region GPU Cluster
+
+# Global FSx Configuration
+global:
+  deployment_type: PERSISTENT_1  # PERSISTENT_1 or PERSISTENT_2
+  storage_type: SSD              # SSD (high performance) or HDD (low cost)
+  per_unit_throughput: 200       # MB/s per TiB (50, 100, 200 for SSD)
+  backup_retention_days: 7
+
+  # Automatic S3 sync
+  s3_sync_enabled: true
+  s3_import_policy: ["NEW", "CHANGED", "DELETED"]
+  s3_export_policy: ["NEW", "CHANGED", "DELETED"]
+
+# Per-Region Configuration
+regions:
+  us-east-1:
+    storage_capacity_gb: 1200
+    s3_bucket: s3://mrgc-models-use1/
+    subnets:
+      - subnet-use1-fsx-a
+      - subnet-use1-fsx-b
+      - subnet-use1-fsx-c
+    mount_point: /fsx
+    dns_name: fs-xxxxx.fsx.us-east-1.amazonaws.com
+
+  us-east-2:
+    storage_capacity_gb: 1200
+    s3_bucket: s3://mrgc-models-use2/
+    subnets:
+      - subnet-use2-fsx-a
+      - subnet-use2-fsx-b
+      - subnet-use2-fsx-c
+    mount_point: /fsx
+    dns_name: fs-yyyyy.fsx.us-east-2.amazonaws.com
+
+  us-west-2:
+    storage_capacity_gb: 1200
+    s3_bucket: s3://mrgc-models-usw2/
+    subnets:
+      - subnet-usw2-fsx-a
+      - subnet-usw2-fsx-b
+      - subnet-usw2-fsx-c
+    mount_point: /fsx
+    dns_name: fs-zzzzz.fsx.us-west-2.amazonaws.com
+
+# Model Organization
+model_structure:
+  base_path: /fsx/models
+
+  # Model pools
+  model_pools:
+    model-a:
+      name: "Llama 2 7B"
+      path: /fsx/models/model-a
+      size_gb: 13.5
+      preload: true  # Load on instance startup
+      s3_source: s3://mrgc-models-use1/llama-2-7b/
+
+    model-b:
+      name: "Mistral 7B Instruct"
+      path: /fsx/models/model-b
+      size_gb: 14.2
+      preload: false  # Load on-demand
+      s3_source: s3://mrgc-models-use1/mistral-7b-instruct/
+
+    model-c:
+      name: "CodeLlama 13B"
+      path: /fsx/models/model-c
+      size_gb: 25.8
+      preload: false
+      s3_source: s3://mrgc-models-use1/codellama-13b/
+
+  # Metadata directory
+  metadata_path: /fsx/metadata
+  model_registry: /fsx/metadata/model-registry.json
+
+# Performance Characteristics
+performance:
+  # First load (from S3 via FSx)
+  first_load_time_7b: "30-45 seconds"
+  first_load_time_13b: "60-90 seconds"
+  first_load_time_70b: "5-7 minutes"
+
+  # Cached load (from FSx local cache)
+  cached_load_time_7b: "5-10 seconds"
+  cached_load_time_13b: "10-15 seconds"
+  cached_load_time_70b: "45-60 seconds"
+
+  # Throughput
+  read_throughput_per_instance: "1-2 GB/s"
+  write_throughput_per_instance: "1-2 GB/s"
+
+  # Capacity
+  max_capacity: "100+ TB"
+  min_capacity: "1.2 TB"
+
+# Cost Estimation
+cost:
+  # FSx Lustre costs (us-east-1)
+  storage_per_gb_month: 0.14        # $0.14/GB-month for SSD
+  throughput_per_mbps_month: 0.13   # $0.13/MB/s-month for 200 MB/s/TiB
+  backup_per_gb_month: 0.05         # $0.05/GB-month
+
+  # Example: 1.2 TB with 200 MB/s throughput
+  example_1200gb:
+    storage_cost: 168    # 1200 GB × $0.14 = $168/month
+    throughput_cost: 30  # 200 MB/s × $0.13 = ~$30/month
+    backup_cost: 8       # ~50 GB backups × $0.05 = ~$8/month
+    total_monthly: 206   # ~$206/month per region
+
+  # Total for 3 regions
+  total_3_regions: 618  # $206 × 3 = $618/month
+
+# Benefits Over EBS
+benefits:
+  vs_ebs:
+    - "Shared across all instances (EBS is per-instance)"
+    - "10x faster load times (parallel access)"
+    - "No data replication needed across instances"
+    - "Automatic S3 sync for model updates"
+    - "Lower total cost (1 FSx vs N EBS volumes)"
+
+  vs_s3_direct:
+    - "1000x lower latency (ms vs seconds)"
+    - "Local caching for repeated access"
+    - "No S3 API rate limits"
+    - "Consistent performance"
+
+# Mounting FSx
+mount:
+  # Install Lustre client
+  install_client: |
+    sudo amazon-linux-extras install -y lustre
+
+  # Mount command
+  mount_command: |
+    sudo mkdir -p /fsx
+    sudo mount -t lustre {dns_name}@tcp:/{mount_name} /fsx
+
+  # Auto-mount on boot (add to /etc/fstab)
+  fstab_entry: |
+    {dns_name}@tcp:/{mount_name} /fsx lustre defaults,_netdev 0 0
+
+  # Verify mount
+  verify: |
+    df -h | grep fsx
+    ls -l /fsx/models/
+
+# S3 Data Repository
+s3_repository:
+  sync_direction: "bidirectional"  # FSx ↔ S3
+
+  # Import from S3
+  import:
+    description: "Automatically import model files from S3 to FSx"
+    events: ["NEW", "CHANGED", "DELETED"]
+    latency: "Few seconds to minutes (based on file size)"
+
+  # Export to S3
+  export:
+    description: "Automatically export changes from FSx to S3"
+    events: ["NEW", "CHANGED", "DELETED"]
+    use_case: "Backup model fine-tuning results"
+
+  # Manual sync
+  manual_sync:
+    import_command: "aws fsx create-data-repository-task --file-system-id fs-xxx --type IMPORT_METADATA_FROM_REPOSITORY"
+    export_command: "aws fsx create-data-repository-task --file-system-id fs-xxx --type EXPORT_TO_REPOSITORY"
+
+# Model Management Workflow
+workflow:
+  1_upload_to_s3:
+    description: "Upload model files to S3 bucket"
+    command: |
+      aws s3 sync /local/models/llama-2-7b/ s3://mrgc-models-use1/llama-2-7b/
+
+  2_auto_import:
+    description: "FSx automatically imports from S3"
+    duration: "30-60 seconds (based on model size)"
+
+  3_verify_fsx:
+    description: "Verify model appears in FSx"
+    command: |
+      ssh gpu-instance
+      ls -lh /fsx/models/model-a/
+
+  4_load_model:
+    description: "GPU instance loads model from FSx"
+    duration: "30-45 seconds (first time), 5-10 seconds (cached)"
+
+  5_inference:
+    description: "Run inference with loaded model"
+    duration: "100-500ms per request"
+
+# Monitoring
+monitoring:
+  cloudwatch_metrics:
+    - DataReadBytes
+    - DataWriteBytes
+    - DataReadOperations
+    - DataWriteOperations
+    - FreeStorageCapacity
+    - MetadataReadOperations
+    - MetadataWriteOperations
+
+  recommended_alarms:
+    low_storage:
+      metric: FreeStorageCapacity
+      threshold: "< 15% free"
+      action: "Add capacity or delete old models"
+
+    high_throughput:
+      metric: DataReadBytes
+      threshold: "> 1 GB/minute sustained"
+      action: "Consider increasing throughput tier"
+
+    high_metadata_ops:
+      metric: MetadataOperations
+      threshold: "> 10000/minute"
+      action: "Indicates many small file operations"
+
+# Security
+security:
+  encryption_at_rest: true
+  encryption_in_transit: true
+
+  security_group_rules:
+    inbound:
+      - port: 988
+        protocol: tcp
+        source: "VPC CIDR (10.66.0.0/16)"
+        description: "Lustre traffic"
+      - port: 1021-1023
+        protocol: tcp
+        source: "VPC CIDR (10.66.0.0/16)"
+        description: "Lustre management"
+
+  iam_permissions:
+    required:
+      - fsx:DescribeFileSystems
+      - fsx:CreateDataRepositoryTask
+      - s3:GetObject
+      - s3:PutObject
+      - s3:ListBucket
+
+# Best Practices
+best_practices:
+  - "Use SSD storage for model loading (200 MB/s throughput)"
+  - "Mount FSx on all GPU instances in region"
+  - "Preload frequently-used models on instance startup"
+  - "Use S3 as authoritative source for models"
+  - "Set up cross-region S3 replication for DR"
+  - "Monitor storage capacity and add as needed"
+  - "Enable automatic backups (7-day retention)"
+  - "Use FSx metadata operations for model registry"
+  - "Test failover by unmounting and remounting FSx"
+  - "Keep model registry in /fsx/metadata/"
+
+# Disaster Recovery
+disaster_recovery:
+  backup_strategy:
+    - "Automatic daily backups (7-day retention)"
+    - "S3 bucket as primary backup"
+    - "Cross-region S3 replication"
+
+  recovery_time:
+    from_backup: "1-2 hours"
+    from_s3: "30-60 minutes (FSx creates new, imports from S3)"
+
+  recovery_procedure:
+    1: "Create new FSx file system in recovery region"
+    2: "Point to S3 bucket (with cross-region replication)"
+    3: "FSx automatically imports models from S3"
+    4: "Mount FSx on GPU instances"
+    5: "Verify model files and registry"
