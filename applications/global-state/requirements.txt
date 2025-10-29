@@ -1,0 +1,13 @@
+# Global State Manager Dependencies
+
+boto3>=1.34.0
+botocore>=1.34.0
+
+# For type hints and dataclasses (Python 3.7+)
+typing-extensions>=4.0.0
+
+# Logging
+python-json-logger>=2.0.0
+
+# AWS X-Ray for distributed tracing (optional)
+aws-xray-sdk>=2.12.0
