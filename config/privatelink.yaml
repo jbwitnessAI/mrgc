@@ -1,0 +1,201 @@
+# PrivateLink Configuration for Multi-Region GPU Cluster
+
+# VPC Endpoint Service Configuration
+endpoint_service:
+  name: mrgc-privatelink-service
+  acceptance_required: true  # Manually approve tenant connections
+
+  # Allowed principals (AWS accounts that can create VPC endpoints)
+  allowed_principals:
+    # Production tenant accounts
+    - "arn:aws:iam::111122223333:root"  # Tenant 1
+    - "arn:aws:iam::444455556666:root"  # Tenant 2
+    - "arn:aws:iam::777788889999:root"  # Tenant 3
+
+    # Organization-wide access (if all tenants are in same org)
+    # - "arn:aws:iam::*:root"
+    # Conditions:
+    #   StringEquals:
+    #     "aws:PrincipalOrgID": "o-xxxxxxxxxx"
+
+  # Private DNS name (optional but recommended)
+  private_dns_name: gpu-cluster.yourcompany.internal
+  private_dns_enabled: true
+
+# Per-Region Configuration
+regions:
+  us-east-1:
+    endpoint_service_name: "com.amazonaws.vpce.us-east-1.vpce-svc-xxxxxxxxx"
+    nlb_arn: "arn:aws:elasticloadbalancing:us-east-1:xxx:loadbalancer/net/mrgc-nlb-use1/xxx"
+    availability_zones:
+      - us-east-1a
+      - us-east-1b
+      - us-east-1c
+
+  us-east-2:
+    endpoint_service_name: "com.amazonaws.vpce.us-east-2.vpce-svc-yyyyyyyyy"
+    nlb_arn: "arn:aws:elasticloadbalancing:us-east-2:xxx:loadbalancer/net/mrgc-nlb-use2/xxx"
+    availability_zones:
+      - us-east-2a
+      - us-east-2b
+      - us-east-2c
+
+  us-west-2:
+    endpoint_service_name: "com.amazonaws.vpce.us-west-2.vpce-svc-zzzzzzzzz"
+    nlb_arn: "arn:aws:elasticloadbalancing:us-west-2:xxx:loadbalancer/net/mrgc-nlb-usw2/xxx"
+    availability_zones:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+
+# Tenant Connection Workflow
+connection_workflow:
+  1_request:
+    description: "Tenant submits connection request"
+    action: "Tenant creates VPC endpoint in their VPC"
+    automation: false
+
+  2_approval:
+    description: "We approve the connection request"
+    action: "Manual approval via AWS Console or API"
+    automation: true  # Can be automated with Lambda
+    approval_sla_hours: 4
+
+  3_notification:
+    description: "Notify tenant of approval"
+    action: "Send endpoint private IPs to tenant"
+    automation: true
+
+  4_testing:
+    description: "Tenant tests connectivity"
+    action: "Tenant sends test request to private IPs"
+    automation: false
+
+  5_production:
+    description: "Enable production traffic"
+    action: "Tenant switches from public to private IPs"
+    automation: false
+
+# Security
+security:
+  # Endpoint policy (applied to tenant's VPC endpoint)
+  endpoint_policy_required: false  # Tenant controls their endpoint policy
+
+  # Network restrictions
+  source_ip_allowlist_enabled: false  # Security groups handle this
+
+  # Connection tracking
+  connection_logging_enabled: true
+  log_retention_days: 90
+
+# Monitoring
+monitoring:
+  cloudwatch_metrics:
+    - ConnectionAttempts
+    - AcceptedConnections
+    - RejectedConnections
+    - BytesProcessed
+
+  alarms:
+    rejected_connections:
+      enabled: true
+      threshold: 10
+      period_minutes: 5
+      severity: warning
+      description: "High number of rejected PrivateLink connections"
+
+    failed_connections:
+      enabled: true
+      threshold: 5
+      period_minutes: 5
+      severity: critical
+      description: "PrivateLink connections failing"
+
+# Tenant-Side Requirements
+tenant_requirements:
+  vpc:
+    min_subnets: 2  # For high availability
+    recommended_subnets: 3  # One per AZ
+    subnet_type: private  # Should be private subnets
+
+  security_groups:
+    required_egress:
+      - protocol: tcp
+        port: 443
+        description: "HTTPS to GPU cluster"
+      - protocol: tcp
+        port: 8080
+        description: "HTTP health checks (optional)"
+
+  dns:
+    private_hosted_zone_required: false
+    use_endpoint_dns: true
+
+# Cost
+cost:
+  per_az_per_hour: 0.01  # $0.01/hour per AZ
+  monthly_estimate_per_region: 21.60  # $0.01/hour * 24 hours * 30 days * 3 AZs
+  data_transfer_per_gb: 0.01  # $0.01/GB (cheaper than internet)
+
+  example_tenant:
+    regions: 1  # Tenant connects from 1 region
+    azs: 3
+    monthly_cost: 21.60
+    data_transfer_gb: 1000
+    total_monthly: 31.60  # $21.60 + $10
+
+# Benefits Over Public Internet
+benefits:
+  latency_reduction: "5-10ms faster (no internet routing)"
+  security: "Traffic never leaves AWS network"
+  bandwidth: "Higher throughput, lower packet loss"
+  compliance: "Required for HIPAA, PCI-DSS"
+  reliability: "99.99% SLA vs 99.9% for internet"
+
+# Multi-Region Connectivity
+multi_region:
+  scenario_1_single_region:
+    description: "Tenant in us-east-1 only"
+    setup:
+      - "Create VPC endpoint in us-east-1"
+      - "Connect to us-east-1 GPU cluster"
+    cost: "$21.60/month"
+
+  scenario_2_multi_region_tenant:
+    description: "Tenant has VPCs in all 3 regions"
+    setup:
+      - "Create VPC endpoint in each region"
+      - "Each endpoint connects to local GPU cluster"
+    cost: "$64.80/month (3 regions × $21.60)"
+    benefit: "Lowest latency, highest availability"
+
+  scenario_3_cross_region:
+    description: "Tenant in us-east-1, wants us-west-2 GPUs"
+    setup:
+      - "Create VPC endpoint in us-east-1"
+      - "Configure endpoint to point to us-west-2 service"
+    cost: "$21.60/month + cross-region data transfer"
+    note: "Higher latency, use only for DR"
+
+# Automation
+automation:
+  approval_lambda:
+    enabled: true
+    function_name: mrgc-privatelink-auto-approve
+    trigger: CloudWatch Events (VPC endpoint creation)
+    logic: |
+      - Check if principal is in allowed_principals list
+      - Validate tenant account is active
+      - Auto-approve if checks pass
+      - Notify tenant via SNS
+      - Log approval to DynamoDB
+
+  monitoring_lambda:
+    enabled: true
+    function_name: mrgc-privatelink-monitor
+    schedule: "rate(5 minutes)"
+    logic: |
+      - Check for pending connection requests
+      - Alert if requests older than SLA (4 hours)
+      - Monitor connection health
+      - Update metrics in CloudWatch
