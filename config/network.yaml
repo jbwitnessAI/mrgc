@@ -1,0 +1,180 @@
+# Multi-Region GPU Cluster - Network Configuration
+# Base CIDR: 10.66.0.0/16
+
+regions:
+  us-east-1:
+    vpc_cidr: "10.66.0.0/18"              # 10.66.0.0 - 10.66.63.255 (16,384 IPs)
+    availability_zones:
+      - us-east-1a
+      - us-east-1b
+      - us-east-1c
+    subnets:
+      public:
+        - cidr: "10.66.0.0/24"            # AZ-a Public (256 IPs)
+          az: us-east-1a
+          name: public-use1a
+        - cidr: "10.66.1.0/24"            # AZ-b Public (256 IPs)
+          az: us-east-1b
+          name: public-use1b
+        - cidr: "10.66.2.0/24"            # AZ-c Public (256 IPs)
+          az: us-east-1c
+          name: public-use1c
+      private:
+        - cidr: "10.66.10.0/23"           # AZ-a Private (512 IPs) - GPU instances
+          az: us-east-1a
+          name: private-use1a
+        - cidr: "10.66.12.0/23"           # AZ-b Private (512 IPs) - GPU instances
+          az: us-east-1b
+          name: private-use1b
+        - cidr: "10.66.14.0/23"           # AZ-c Private (512 IPs) - GPU instances
+          az: us-east-1c
+          name: private-use1c
+      fsx:
+        - cidr: "10.66.20.0/24"           # AZ-a FSx Lustre (256 IPs)
+          az: us-east-1a
+          name: fsx-use1a
+        - cidr: "10.66.21.0/24"           # AZ-b FSx Lustre (256 IPs)
+          az: us-east-1b
+          name: fsx-use1b
+      tgw:
+        - cidr: "10.66.30.0/28"           # Transit Gateway attachment (16 IPs)
+          az: us-east-1a
+          name: tgw-use1a
+        - cidr: "10.66.30.16/28"          # Transit Gateway attachment (16 IPs)
+          az: us-east-1b
+          name: tgw-use1b
+
+  us-east-2:
+    vpc_cidr: "10.66.64.0/18"             # 10.66.64.0 - 10.66.127.255 (16,384 IPs)
+    availability_zones:
+      - us-east-2a
+      - us-east-2b
+      - us-east-2c
+    subnets:
+      public:
+        - cidr: "10.66.64.0/24"           # AZ-a Public (256 IPs)
+          az: us-east-2a
+          name: public-use2a
+        - cidr: "10.66.65.0/24"           # AZ-b Public (256 IPs)
+          az: us-east-2b
+          name: public-use2b
+        - cidr: "10.66.66.0/24"           # AZ-c Public (256 IPs)
+          az: us-east-2c
+          name: public-use2c
+      private:
+        - cidr: "10.66.74.0/23"           # AZ-a Private (512 IPs) - GPU instances
+          az: us-east-2a
+          name: private-use2a
+        - cidr: "10.66.76.0/23"           # AZ-b Private (512 IPs) - GPU instances
+          az: us-east-2b
+          name: private-use2b
+        - cidr: "10.66.78.0/23"           # AZ-c Private (512 IPs) - GPU instances
+          az: us-east-2c
+          name: private-use2c
+      fsx:
+        - cidr: "10.66.84.0/24"           # AZ-a FSx Lustre (256 IPs)
+          az: us-east-2a
+          name: fsx-use2a
+        - cidr: "10.66.85.0/24"           # AZ-b FSx Lustre (256 IPs)
+          az: us-east-2b
+          name: fsx-use2b
+      tgw:
+        - cidr: "10.66.94.0/28"           # Transit Gateway attachment (16 IPs)
+          az: us-east-2a
+          name: tgw-use2a
+        - cidr: "10.66.94.16/28"          # Transit Gateway attachment (16 IPs)
+          az: us-east-2b
+          name: tgw-use2b
+
+  us-west-2:
+    vpc_cidr: "10.66.128.0/18"            # 10.66.128.0 - 10.66.191.255 (16,384 IPs)
+    availability_zones:
+      - us-west-2a
+      - us-west-2b
+      - us-west-2c
+    subnets:
+      public:
+        - cidr: "10.66.128.0/24"          # AZ-a Public (256 IPs)
+          az: us-west-2a
+          name: public-usw2a
+        - cidr: "10.66.129.0/24"          # AZ-b Public (256 IPs)
+          az: us-west-2b
+          name: public-usw2b
+        - cidr: "10.66.130.0/24"          # AZ-c Public (256 IPs)
+          az: us-west-2c
+          name: public-usw2c
+      private:
+        - cidr: "10.66.138.0/23"          # AZ-a Private (512 IPs) - GPU instances
+          az: us-west-2a
+          name: private-usw2a
+        - cidr: "10.66.140.0/23"          # AZ-b Private (512 IPs) - GPU instances
+          az: us-west-2b
+          name: private-usw2b
+        - cidr: "10.66.142.0/23"          # AZ-c Private (512 IPs) - GPU instances
+          az: us-west-2c
+          name: private-usw2c
+      fsx:
+        - cidr: "10.66.148.0/24"          # AZ-a FSx Lustre (256 IPs)
+          az: us-west-2a
+          name: fsx-usw2a
+        - cidr: "10.66.149.0/24"          # AZ-b FSx Lustre (256 IPs)
+          az: us-west-2b
+          name: fsx-usw2b
+      tgw:
+        - cidr: "10.66.158.0/28"          # Transit Gateway attachment (16 IPs)
+          az: us-west-2a
+          name: tgw-usw2a
+        - cidr: "10.66.158.16/28"         # Transit Gateway attachment (16 IPs)
+          az: us-west-2b
+          name: tgw-usw2b
+
+# Transit Gateway Configuration
+transit_gateway:
+  name: mrgc-tgw
+  amazon_side_asn: 64512
+  auto_accept_shared_attachments: true
+  default_route_table_association: true
+  default_route_table_propagation: true
+  dns_support: enable
+  vpn_ecmp_support: enable
+
+  # Cross-region peering
+  peering:
+    - from: us-east-1
+      to: us-east-2
+    - from: us-east-1
+      to: us-west-2
+    - from: us-east-2
+      to: us-west-2
+
+# VPC Endpoints (for private AWS service access)
+vpc_endpoints:
+  - service: s3
+    type: gateway
+  - service: dynamodb
+    type: gateway
+  - service: kms
+    type: interface
+  - service: ec2
+    type: interface
+  - service: cloudwatch
+    type: interface
+  - service: logs
+    type: interface
+
+# Security
+nat_gateway:
+  enabled: true
+  high_availability: true  # One NAT gateway per AZ
+
+flow_logs:
+  enabled: true
+  retention_days: 90
+  destination: cloudwatch
+
+# Tags
+tags:
+  Project: "Multi-Region GPU Cluster"
+  ManagedBy: "Terraform"
+  Environment: "{{ environment }}"
+  CostCenter: "GPU-Infrastructure"
